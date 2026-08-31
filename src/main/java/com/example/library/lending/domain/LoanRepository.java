@@ -1,6 +1,7 @@
 package com.example.library.lending.domain;
 
 import jakarta.data.repository.CrudRepository;
+import jakarta.data.repository.Delete;
 import jakarta.data.repository.Query;
 import jakarta.data.repository.Repository;
 import jakarta.transaction.Transactional;
@@ -8,6 +9,10 @@ import jakarta.transaction.Transactional;
 @Repository
 @Transactional
 public interface LoanRepository extends CrudRepository<Loan, LoanId> {
+
+    @Delete
+    void deleteAll();
+
     @Query("select count(*) = 0 from Loan where copyId = :id and returnedAt is null")
     boolean isAvailable(CopyId id);
 

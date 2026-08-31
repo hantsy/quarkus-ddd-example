@@ -58,9 +58,9 @@ public class LibraryTest {
     @BeforeEach
     void cleanUp() {
         withTx(() -> {
-            loanRepository.deleteAll(loanRepository.findAll().toList());
-            copyRepository.deleteAll(copyRepository.findAll().toList());
-            bookRepository.deleteAll(bookRepository.findAll().toList());
+            loanRepository.deleteAll();
+            copyRepository.deleteAll();
+            bookRepository.deleteAll();
         });
     }
 
