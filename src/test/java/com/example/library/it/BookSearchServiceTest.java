@@ -5,21 +5,27 @@ import com.example.library.catalog.domain.BookNotFoundException;
 import com.example.library.catalog.domain.BookSearchService;
 import com.example.library.catalog.domain.Isbn;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.QuarkusTestProfile;
+import io.quarkus.test.junit.TestProfile;
 import jakarta.inject.Inject;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Integration test for the {@link BookSearchService} domain port against the real
- * Open Library API. It is tagged {@code integration} and excluded from the default
- * build because it requires outbound network access to {@code https://openlibrary.org/}.
+ * Open Library API.
+ * <p>
+ * The {@code %test.} profile override of {@code openlibrary.base-url} points the
+ * adapter at the WireMock dev service, so this test uses {@link RealOpenLibraryProfile}
+ * to restore {@code https://openlibrary.org/} and exercise the real service instead.
  */
 @QuarkusTest
-@Tag("integration")
-public class BookSearchServiceIT {
+@TestProfile(BookSearchServiceTest.RealOpenLibraryProfile.class)
+public class BookSearchServiceTest {
 
     @Inject
     BookSearchService bookSearchService;
@@ -38,5 +44,13 @@ public class BookSearchServiceIT {
         assertThatThrownBy(() -> bookSearchService.search(new Isbn("9780999999998")))
                 .isInstanceOf(BookNotFoundException.class)
                 .hasMessageContaining("9780999999998");
+    }
+
+    /** Restores the real Open Library base URL, overriding the {@code %test.} WireMock value. */
+    public static class RealOpenLibraryProfile implements QuarkusTestProfile {
+        @Override
+        public Map<String, String> getConfigOverrides() {
+            return Map.of("openlibrary.base-url", "https://openlibrary.org/");
+        }
     }
 }

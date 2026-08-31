@@ -6,12 +6,14 @@ import com.example.library.catalog.domain.BookSearchException;
 import com.example.library.catalog.domain.BookSearchService;
 import com.example.library.catalog.domain.Isbn;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.ProcessingException;
 import jakarta.ws.rs.client.Client;
 import jakarta.ws.rs.client.ClientBuilder;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.net.URI;
 import java.util.logging.Level;
@@ -19,14 +21,12 @@ import java.util.logging.Logger;
 
 /**
  * Open Library adapter implementing the {@link BookSearchService} domain port,
- * backed by the JAX-RS client.
+ * backed by the JAX-RS client. The Open Library base URL is configurable via the
+ * {@code openlibrary.base-url} property (see {@code application.properties}).
  */
 @ApplicationScoped
 public class OpenLibraryBookSearchService implements BookSearchService {
     private static final Logger LOGGER = Logger.getLogger(OpenLibraryBookSearchService.class.getName());
-
-    /** The default Open Library API base URL. */
-    public static final String DEFAULT_BASE_URL = "https://openlibrary.org/";
 
     /** Maximum number of HTTP redirects to follow before giving up. */
     private static final int MAX_REDIRECTS = 5;
@@ -34,16 +34,8 @@ public class OpenLibraryBookSearchService implements BookSearchService {
     private final Client client;
     private final String baseUrl;
 
-    public OpenLibraryBookSearchService() {
-        this(DEFAULT_BASE_URL);
-    }
-
-    /**
-     * Points the adapter at a custom base URL instead of the real Open Library
-     * API. Intended for tests that mock the endpoint (e.g. with WireMock), where
-     * the base URL is the WireMock server address.
-     */
-    OpenLibraryBookSearchService(String baseUrl) {
+    @Inject
+    public OpenLibraryBookSearchService(@ConfigProperty(name = "openlibrary.base-url") String baseUrl) {
         this.client = ClientBuilder.newClient();
         this.baseUrl = baseUrl;
     }
