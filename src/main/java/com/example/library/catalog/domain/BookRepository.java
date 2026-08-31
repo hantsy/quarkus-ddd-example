@@ -1,0 +1,18 @@
+package com.example.library.catalog.domain;
+
+import jakarta.data.repository.CrudRepository;
+import jakarta.data.repository.Delete;
+import jakarta.data.repository.Query;
+import jakarta.data.repository.Repository;
+import jakarta.transaction.Transactional;
+
+@Repository
+@Transactional
+public interface BookRepository extends CrudRepository<Book, BookId> {
+
+    @Delete
+    void deleteAll();
+
+    @Query("select count(*) > 0 from Book where isbn = :isbn")
+    boolean existsByIsbn(Isbn isbn);
+}
