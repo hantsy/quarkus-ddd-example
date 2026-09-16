@@ -20,7 +20,7 @@
 
         <quarkus.version>3.39.1</quarkus.version>
         <commons-validator.version>1.11.0</commons-validator.version>
-        <lombok.version>1.18.46</lombok.version>
+        <lombok.version>1.18.48</lombok.version>
 
         <quarkus-wiremock.version>1.7.0</quarkus-wiremock.version>
         <archunit.version>1.5.0</archunit.version>
