@@ -22,7 +22,7 @@
         <commons-validator.version>1.11.0</commons-validator.version>
         <lombok.version>1.18.48</lombok.version>
 
-        <quarkus-wiremock.version>1.7.0</quarkus-wiremock.version>
+        <quarkus-wiremock.version>1.8.1</quarkus-wiremock.version>
         <archunit.version>1.5.1</archunit.version>
         <assertj.version>3.27.7</assertj.version>
     </properties>
