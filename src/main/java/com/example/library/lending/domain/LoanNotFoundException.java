@@ -1,6 +1,6 @@
 package com.example.library.lending.domain;
 
-import com.example.library.common.DomainException;
+import com.example.library.shared.DomainException;
 
 /**
  * Thrown when a loan cannot be found, e.g. the loan id passed to

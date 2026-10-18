@@ -6,7 +6,7 @@ import com.example.library.catalog.domain.BookInformation;
 import com.example.library.catalog.domain.BookRepository;
 import com.example.library.catalog.domain.BookSearchService;
 import com.example.library.catalog.domain.Isbn;
-import com.example.library.common.UseCase;
+import com.example.library.shared.UseCase;
 import jakarta.inject.Inject;
 
 @UseCase

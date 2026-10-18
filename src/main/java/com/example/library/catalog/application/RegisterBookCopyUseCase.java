@@ -4,7 +4,7 @@ import com.example.library.catalog.domain.BarCode;
 import com.example.library.catalog.domain.BookId;
 import com.example.library.catalog.domain.Copy;
 import com.example.library.catalog.domain.CopyRepository;
-import com.example.library.common.UseCase;
+import com.example.library.shared.UseCase;
 import jakarta.inject.Inject;
 
 @UseCase

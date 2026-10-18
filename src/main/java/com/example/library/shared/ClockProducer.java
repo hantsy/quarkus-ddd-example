@@ -1,4 +1,4 @@
-package com.example.library.common;
+package com.example.library.shared;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;

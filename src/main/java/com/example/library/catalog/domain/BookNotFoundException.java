@@ -1,6 +1,6 @@
 package com.example.library.catalog.domain;
 
-import com.example.library.common.DomainException;
+import com.example.library.shared.DomainException;
 
 /**
  * Thrown when a book cannot be found, e.g. a book search by ISBN returned

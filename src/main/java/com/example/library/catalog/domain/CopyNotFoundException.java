@@ -1,6 +1,6 @@
 package com.example.library.catalog.domain;
 
-import com.example.library.common.DomainException;
+import com.example.library.shared.DomainException;
 
 /**
  * Thrown when a copy cannot be found in the catalog, e.g. a {@code CopyRepository}

@@ -1,8 +1,5 @@
-package com.example.library.lending.application;
+package com.example.library.lending.domain;
 
-import com.example.library.lending.domain.CopyId;
-import com.example.library.lending.domain.CopyNotAvailableException;
-import com.example.library.lending.domain.LoanRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 

@@ -6,7 +6,7 @@ It is the Quarkus port of the [Jakarta EE DDD example](https://github.com/hantsy
 
 ## Architecture
 
-Two bounded contexts (`catalog`, `lending`) plus a shared kernel (`common`):
+Two bounded contexts (`catalog`, `lending`) plus a shared kernel (`shared`):
 
 ```
 com.example.library
@@ -17,9 +17,9 @@ com.example.library
 │   └── infrastructure OpenLibraryBookSearchService (JAX-RS client)
 ├── lending
 │   ├── domain        Loan (JPA entity), LoanId/CopyId/UserId (VOs), OverdueFee,
-│   │                 LoanCreated/LoanClosed (events), LoanRepository
-│   └── application   RentBookUseCase, ReturnBookUseCase, CopyAvailabilityValidator
-└── common            DomainException, @UseCase stereotype, @Logged interceptor, Clock
+│   │                 LoanCreated/LoanClosed (events), LoanRepository, CopyAvailabilityValidator
+│   └── application   RentBookUseCase, ReturnBookUseCase
+└── shared            DomainException, @UseCase stereotype, @Logged interceptor, Clock
 ```
 
 - **Persistence** — Jakarta Data repositories (`@Repository` + `CrudRepository` + `@Query`), implemented by Quarkus Data Hibernate with compile-time generation (`quarkus-data-hibernate` + the `quarkus-data-processor` annotation processor).
