@@ -4,6 +4,8 @@ A **Library** example demonstrating modular DDD with **Quarkus** (3.39), **Java 
 
 It is the Quarkus port of the [Jakarta EE DDD example](https://github.com/hantsy/jakartaee-ddd-example), reusing the same domain model, Jakarta Data repositories, CDI events, and JAX-RS client — all of which Quarkus provides natively.
 
+[Applying DDD with Quarkus](docs/applying-ddd-with-quarkus.md).
+
 ## Architecture
 
 Two bounded contexts (`catalog`, `lending`) plus a shared kernel (`shared`):
