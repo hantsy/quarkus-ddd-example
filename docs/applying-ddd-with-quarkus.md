@@ -1,41 +1,94 @@
 # Applying DDD with Quarkus
 
-This post is for Java developers who want to see how tactical Domain-Driven
-Design (DDD) fits into a Quarkus application. It follows the library sample
-from domain objects through persistence, use cases, events, and tests. The
-library's requirements and story are covered in the
-[Jakarta EE DDD article](https://github.com/hantsy/jakartaee-ddd-example/blob/master/docs/2026-10-08-applying-ddd-with-jakarta-ee-and-jakarta-data.md).
+Generated repository implementations make the Quarkus version an interesting
+counterpoint to the hand-written SQL in the Helidon example. The entities and
+bounded contexts remain recognizable, but Quarkus Data Hibernate implements
+Jakarta Data contracts at build time. The shared library scenario is described
+elsewhere; this post looks at the Quarkus-specific tactical design.
 
 ## Strategic design
 
-The design separates Cataloging, which owns books and copies, from Lending,
-which owns loans and overdue fees. Lending refers to a copy by its identifier
-and publishes loan events so Cataloging can update copy availability without
-sharing its entity model. This post focuses on implementing that boundary
-with Quarkus CDI's in-process, synchronous events; see the linked article for
-the domain story, context map, and subdomain rationale.
+Cataloging owns books and physical copies; Lending owns loans and fees. Lending
+keeps only a copy identifier and publishes loan events, leaving Cataloging to
+update its own copy state. Curious how the example arrived at these boundaries?
+The [Jakarta EE DDD article](https://github.com/hantsy/jakartaee-ddd-example/blob/master/docs/2026-10-08-applying-ddd-with-jakarta-ee-and-jakarta-data.md)
+traces the strategic design; here, we'll see how Quarkus implements the model
+without crossing that boundary.
 
-## Model catalog and lending separately
+## Part II — Tactical design with Quarkus
 
-The catalog context owns JPA entities `Book` and `Copy`; lending owns the
-`Loan` entity. Their embedded ID value objects keep book, copy, loan, and user
-identifiers distinct in APIs. `Isbn` validates the ISBN at construction, while
-`BarCode` represents the physical copy's barcode.
+Quarkus combines familiar Jakarta APIs with build-time implementation
+generation: JPA maps the aggregate roots, Quarkus Data Hibernate implements
+the Jakarta Data repositories, and CDI connects the contexts with synchronous
+events.
 
-`Copy` owns its available state and methods for changing it. `Loan` owns
-creation time, due date, return time, and overdue fee. Its default constructor
-sets a 30-day term; `returned()` computes a flat fee from the overdue day
-count. The fee schedule is represented by the `OverdueFee` enum.
+### 1. Entities, value objects, and aggregate roots
 
-The sample's entities include JPA `@Version` fields, but its integration tests
-don't exercise concurrent rentals or define an explicit locking policy.
-`RegisterBookCopyUseCase` also saves a copy from a `BookId` without checking
-that the book exists.
+#### Which concepts are entities and which are values
 
-## Declare Jakarta Data repositories
+The model tracks three entities by identity: `Book` represents a catalog
+record, `Copy` a physical item, and `Loan` a lending record. Each is mapped as
+a JPA entity and used as an aggregate root for its own state.
 
-The repository interfaces live beside their domain types. Quarkus Data
-Hibernate generates their implementations at compile time:
+The model represents identities and business values with `BookId`, `CopyId`,
+`LoanId`, `UserId`, `Isbn`, `BarCode`, and `OverdueFee`. `Isbn` and `BarCode`
+are value objects; `OverdueFee` represents the fee schedule. `Copy` stores a
+`BookId`, while `Loan` stores a Lending-owned `CopyId` and a `UserId`.
+
+#### Aggregate boundaries
+
+`Copy` refers to its book by `BookId`, and `Loan` refers to the copy and
+borrower by identifiers. Neither aggregate embeds another aggregate. This
+keeps catalog state separate from lending state.
+
+> Aggregates refer to each other by identity, not by containment.
+
+#### Invariants and their guards
+
+`Copy` changes availability through `makeAvailable()` and
+`makeUnavailable()`. `Loan.returned()` records the return and calculates an
+overdue fee. `CopyAvailabilityValidator` checks the open-loan rule through
+`LoanRepository` before the use case creates a new loan.
+
+`RegisterBookCopyUseCase` accepts a `BookId` but does not check that the book
+exists before saving the copy. The sample therefore does not enforce the
+book-to-copy association invariant.
+
+`Copy` and `Loan` declare JPA `@Version` fields, but the integration tests do
+not exercise simultaneous rentals or establish a concurrency policy. A
+repository check followed by a save does not, by itself, prevent concurrent
+requests from both passing the availability check.
+
+#### Map the model with JPA
+
+JPA annotations map the domain classes directly. `@EmbeddedId` maps identity,
+and `@Embedded` with `@AttributeOverride` maps values to the intended columns.
+For example, `Loan` embeds its own ID and uses column overrides for the copy
+and borrower IDs:
+
+```java
+@Entity
+public class Loan {
+    @EmbeddedId
+    private LoanId loanId;
+
+    @Embedded
+    @AttributeOverride(name = "id", column = @Column(name = "copy_id"))
+    private CopyId copyId;
+
+    @Embedded
+    @AttributeOverride(name = "id", column = @Column(name = "user_id"))
+    private UserId userId;
+}
+```
+
+The classes do not implement jMolecules aggregate interfaces; the aggregate
+boundaries come from the domain model and are guarded by package rules.
+
+### 2. Repositories with Jakarta Data
+
+Quarkus Data Hibernate generates repository implementations from Jakarta Data
+interfaces at compile time. The contracts live beside their aggregate types:
 
 ```java
 @Repository
@@ -46,88 +99,130 @@ public interface BookRepository extends CrudRepository<Book, BookId> {
 }
 ```
 
-`LoanRepository.isAvailable()` queries for the absence of an open loan for a
-copy. It supports the lending precondition, but a check followed by a save
-doesn't by itself prevent two concurrent transactions from passing that check.
-The sample doesn't claim race-free availability.
+`LoanRepository` declares a query that checks whether a copy has an open loan.
+The application use cases depend on these repository contracts, not on
+generated classes or an entity manager. This differs from Helidon Data JDBC:
+the Quarkus repository uses Jakarta Data annotations and a query in the
+repository interface rather than explicit JDBC statements and row mappers.
 
-The Maven compiler configures Quarkus's `quarkus-data-processor`, and the
-project uses the `quarkus-data-hibernate` extension. This replaces
-handwritten repository implementations with Jakarta Data interfaces and
-generated code. See the [Quarkus Data Hibernate guide](https://quarkus.io/guides/quarkus-data-hibernate)
-for extension setup and supported features.
+### 3. Domain events with CDI
 
-## Put orchestration in use cases
+#### Events in this example
 
-The `@UseCase` stereotype combines CDI application scope, `@Transactional`,
-and the sample's `@Logged` interceptor. `AddBookToCatalogUseCase` checks for a
-duplicate ISBN, resolves a title through `BookSearchService`, and saves a
-`Book`. `RentBookUseCase` checks availability, reads the injected `Clock`,
-saves a `Loan`, and fires `LoanCreated`. `ReturnBookUseCase` updates the loan
-and fires `LoanClosed`.
+Lending publishes two immutable facts: `LoanCreated` and `LoanClosed`. Each
+event carries the Lending context's `CopyId`; it does not expose a Cataloging
+entity. The use cases inject `Event<LoanCreated>` or `Event<LoanClosed>` and
+fire the event after saving the relevant loan.
+The loan records overdue fees, but the sample does not publish an
+`OverdueFeeCalculated` event.
 
-The application services orchestrate repositories and domain behavior. They
-don't make the catalog context depend directly on lending's `Copy` entity.
+#### Publish and observe CDI events
 
-## React to local CDI events
+Cataloging observes the events in `DomainEventListener` with CDI's
+`@Observes`. The listener translates the identifier to Cataloging's `CopyId`,
+loads Cataloging's `Copy`, updates its availability, and saves it. CDI
+observers run synchronously by default, so the integration test checks the
+updated copy when the use case returns.
 
-The catalog's `DomainEventListener` observes `LoanCreated` and `LoanClosed`.
-It translates the lending copy ID to the catalog ID type, loads the `Copy`,
-updates its availability, and saves it. Quarkus CDI events are synchronous by
-default; the observer runs during `Event.fire()`. The integration test checks
-the copy state after the use case returns.
+This is in-process event delivery inside one application. It is not a
+message-broker integration or a durable event log. A service split would need
+a different delivery and transaction strategy.
 
-This keeps the contexts in one application and uses in-process communication.
-It is not a durable event log or a broker-based integration boundary. The
-`LibraryTest` verifies sequential rent/return behavior and an overdue fee; its
-second-rental check uses `Exception.class` and doesn't assert the exact domain
-exception. It also doesn't test concurrent rentals.
+### 4. Domain and application services with CDI
 
-## Isolate the external book-search service
+Application services coordinate use cases; domain services enforce rules that
+depend on more than one aggregate. Quarkus uses CDI for injection and
+transactional application services.
 
-`BookSearchService` is a catalog-domain port. `OpenLibraryBookSearchService`
-implements it using a JAX-RS client, maps the Open Library response to
-`BookInformation`, follows redirects, and maps not-found, upstream-status, and
-network failures into domain exceptions.
+#### 4.1 Application services and transactions
 
-`OpenLibraryBookSearchServiceTest` uses WireMock to test successful redirect,
-not-found, upstream error, and network-failure cases without external
-network access. `BookSearchServiceTest` calls the real Open Library API and
-therefore depends on network and provider availability.
+`AddBookToCatalogUseCase`, `RegisterBookCopyUseCase`, `RentBookUseCase`, and
+`ReturnBookUseCase` coordinate application operations. The shared `@UseCase`
+stereotype combines CDI application scope, `@Transactional`, and the sample's
+`@Logged` interceptor.
 
-## Enforce package boundaries
+`RentBookUseCase` checks availability, reads the current time from an
+injected `Clock`, saves a `Loan`, and fires `LoanCreated`. `ReturnBookUseCase`
+records the return and any fee, saves the loan, and fires `LoanClosed`.
 
-The catalog context has application, domain, and infrastructure packages;
-lending has application and domain packages. The sample has no presentation
-layer.
-`ArchitectureTest` checks dependency direction, shared-kernel independence,
-context isolation, the event-listener exception, and repository placement.
-It excludes `CopyAvailabilityValidator` from the framework-independence rule
-because that domain-package service is CDI-injected.
+#### 4.2 Domain services and cross-aggregate rules
 
-The project targets Java 25 and Quarkus 3.40.1. Its in-memory H2 configuration
-is for the sample's tests, not a production database setup. Build and run the
-tests with:
+`CopyAvailabilityValidator` queries `LoanRepository` to check for an open
+loan. It raises `CopyNotAvailableException` when another loan makes the copy
+unavailable. The rule depends on more than one `Loan`, so the application
+delegates it to a domain service rather than putting the query in an entity.
+
+As in the other examples, a sequential availability check alone does not
+prevent two concurrent transactions from both passing the check.
+
+#### 4.3 Ports and adapters with Quarkus
+
+Cataloging declares `BookSearchService` as a port for ISBN lookup.
+`OpenLibraryBookSearchService` implements the port with a JAX-RS client,
+translates provider data into `BookInformation`, and maps HTTP and network
+failures to domain exceptions. The use case depends on the port rather than
+the client or provider response.
+
+### 5. Packages and ArchUnit rules
+
+Cataloging and Lending have separate context packages, each with
+`application` and `domain` packages. Cataloging also has an `infrastructure`
+package for the external book-search adapter; `shared` contains
+cross-cutting types.
+
+`ArchitectureTest` uses ArchUnit to check that:
+
+- domain packages do not depend on application or infrastructure packages;
+- domain packages avoid CDI and REST APIs, except for
+  `CopyAvailabilityValidator`;
+- application packages depend on domain but not on infrastructure;
+- `shared` does not depend on either bounded context;
+- Lending does not depend on Cataloging;
+- only the catalog `DomainEventListener` may depend on Lending; and
+- repository contracts reside in domain packages.
+
+The framework-independence rule excludes `CopyAvailabilityValidator`, which
+CDI injects. JPA annotations remain on the domain entities, so this test does
+not claim that persistence mapping is framework-independent. The test also
+excludes generated Quarkus Data repository and metamodel classes from its
+imported class set.
+
+## Part III — Verify scenarios with integration tests
+
+`LibraryTest` exercises sequential rent and return behavior, availability
+updates, a second-rental rejection, and an overdue fee. The rejection
+assertion accepts `Exception`, so it does not verify the precise domain
+exception. The tests do not exercise concurrent rentals.
+
+`OpenLibraryBookSearchServiceTest` uses WireMock for provider responses and
+failure cases. A separate live test calls the real Open Library API and
+depends on network and provider availability.
+
+## Run the sample
+
+Build the project and run its tests with:
 
 ```shell
 ./mvnw clean package
 ```
 
-Start Quarkus in development mode with:
+To start Quarkus in development mode, use:
 
 ```shell
 ./mvnw quarkus:dev
 ```
 
-## Further reading
+## Summary
+
+Quarkus maps aggregates as JPA entities, generates Jakarta Data repositories
+with Quarkus Data Hibernate, and uses synchronous CDI observers for
+cross-context events. ArchUnit tests encode the package and dependency rules,
+including the explicit listener exception.
+
+### Further reading
 
 - [Quarkus Data Hibernate guide](https://quarkus.io/guides/quarkus-data-hibernate)
 - [Quarkus CDI guide](https://quarkus.io/guides/cdi)
-- [Jakarta EE DDD article](https://github.com/hantsy/jakartaee-ddd-example/blob/master/docs/2026-10-08-applying-ddd-with-jakarta-ee-and-jakarta-data.md)
-- [Spring I/O talk: Implementing Domain-Driven Design with Spring](https://www.youtube.com/watch?v=VGhg6Tfxb60)
-
-The [Helidon](https://github.com/hantsy/helidon-ddd-example),
-[Spring Java](https://github.com/hantsy/spring-ddd-example), and
-[Spring Kotlin](https://github.com/hantsy/spring-ddd-kotlin-example)
-repositories implement the same example with different persistence and event
-stacks.
+- [Helidon DDD example](https://github.com/hantsy/helidon-ddd-example)
+- [Spring Boot Java DDD example](https://github.com/hantsy/spring-ddd-example)
+- [Spring Boot Kotlin DDD example](https://github.com/hantsy/spring-ddd-kotlin-example)
